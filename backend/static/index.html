@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SecureWork AI Console</title>
+<style>
+:root{--bg:#0f1420;--card:#171e2e;--fg:#e6eaf2;--mut:#8b96ad;--line:#27314a;--acc:#4f8cff;--ok:#2fbf71;--warn:#f5a524;--bad:#ef4d5b;--crit:#b91c5c}
+@media (prefers-color-scheme:light){:root{--bg:#f4f6fb;--card:#fff;--fg:#17203a;--mut:#5b6784;--line:#dfe4ef}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:17px;margin:0;flex:1}nav button,button{background:var(--card);color:var(--fg);border:1px solid var(--line);padding:6px 12px;border-radius:6px;cursor:pointer}
+nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}main{padding:16px;max-width:1200px;margin:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}.card .n{font-size:24px;font-weight:600}.card .l{color:var(--mut);font-size:12px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-size:13px;word-break:break-word}th{color:var(--mut)}
+.sev{padding:1px 8px;border-radius:10px;font-size:12px;color:#fff}.critical{background:var(--crit)}.high{background:var(--bad)}.medium{background:var(--warn)}.low,.info{background:var(--mut)}
+.empty{color:var(--mut);padding:16px;text-align:center}.bar{display:flex;align-items:center;gap:8px;margin:4px 0}.bar i{display:block;height:10px;background:var(--acc);border-radius:3px}
+input,select{background:var(--card);color:var(--fg);border:1px solid var(--line);padding:6px;border-radius:6px}.filters{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+#login{max-width:320px;margin:80px auto;display:flex;flex-direction:column;gap:10px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px}
+</style></head><body>
+<div id="login" hidden><h1>SecureWork AI</h1><input id="u" placeholder="Username" autocomplete="username"><input id="p" type="password" placeholder="Password" autocomplete="current-password"><button id="go">Sign in</button><div id="err" class="empty"></div></div>
+<div id="app" hidden>
+<header><h1>SecureWork AI Console</h1><nav id="nav"></nav><span id="health" class="l"></span><button id="out">Sign out</button></header>
+<main id="view"></main></div>
+<script>
+let tok=sessionStorage.getItem("t"),page="overview";const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+async function api(p){const r=await fetch(p,{headers:{Authorization:"Bearer "+tok}});if(r.status==401){logout();throw 0}return r.json()}
+function logout(){sessionStorage.removeItem("t");tok=null;show()}
+function show(){$("#login").hidden=!!tok;$("#app").hidden=!tok;if(tok)render()}
+$("#go").onclick=async()=>{const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("#u").value,password:$("#p").value})});
+ if(r.ok){tok=(await r.json()).access_token;sessionStorage.setItem("t",tok);show()}else $("#err").textContent="Invalid credentials"};
+$("#out").onclick=logout;
+const pages=["overview","devices","intrusions","applications","logs"];
+$("#nav").innerHTML=pages.map(p=>`<button data-p="${p}">${p}</button>`).join("");
+$("#nav").onclick=e=>{if(e.target.dataset.p){page=e.target.dataset.p;render()}};
+const sev=s=>`<span class="sev ${esc(s)}">${esc(s)}</span>`;
+const tbl=(cols,rows)=>rows.length?`<table><tr>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td>${c[1](r)}</td>`).join("")}</tr>`).join("")}</table>`:`<div class="empty">No data yet.</div>`;
+const bars=o=>{const e=Object.entries(o),m=Math.max(1,...e.map(x=>x[1]));return e.length?e.map(([k,v])=>`<div class="bar"><span style="width:110px">${esc(k)}</span><i style="width:${v/m*100}%"></i>${v}</div>`).join(""):`<div class="empty">No data yet.</div>`};
+function line(pts){if(!pts.length)return`<div class="empty">No events in window.</div>`;const m=Math.max(...pts.map(p=>p.count)),w=400,h=110,
+ xy=pts.map((p,i)=>`${pts.length>1?i/(pts.length-1)*w:w/2},${h-p.count/m*(h-10)-5}`).join(" ");
+ return`<svg viewBox="0 0 ${w} ${h}" width="100%"><polyline fill="none" stroke="var(--acc)" stroke-width="2" points="${xy}"/></svg><div class="l">${esc(pts[0].t)} → ${esc(pts.at(-1).t)} (peak ${m}/h)</div>`}
+async function render(){document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.p==page));
+ const v=$("#view");api("/api/health").then(h=>{$("#health").innerHTML=`<span class="dot" style="background:${h.database=="up"?"var(--ok)":"var(--bad)"}"></span>DB ${h.database} · ES ${h.elasticsearch} · model ${h.ids_model}`});
+ if(page=="overview"){const s=await api("/api/dashboard/stats"),t=s.traffic;
+  v.innerHTML=`<div class="grid">${[["Devices",s.devices_total],["Online",s.devices_online],["Security events",s.security_events],["Normal traffic",t.normal||0],["Suspicious traffic",t.suspicious||0],["Intrusion alerts",s.intrusion_alerts],["Critical alerts",s.critical_alerts],["App events",s.app_events]].map(c=>`<div class="card"><div class="n">${c[1]}</div><div class="l">${c[0]}</div></div>`).join("")}</div>
+  <div class="two"><div class="card"><b>Events over time (24h)</b>${line(s.events_over_time)}</div><div class="card"><b>Alert severity</b>${bars(s.alert_severity)}</div>
+  <div class="card"><b>Attack categories</b>${bars(s.attack_categories)}</div><div class="card"><b>Events per device</b>${bars(s.events_per_device)}</div></div>
+  <div class="card"><b>Recent events</b>${tbl([["Time",r=>esc(r.ts)],["Severity",r=>sev(r.severity)],["Source",r=>esc(r.source||"")],["Description",r=>esc(r.description)]],s.recent_events)}</div>`}
+ if(page=="devices"){const d=await api("/api/devices");v.innerHTML=`<div class="card">${tbl([["Name",r=>esc(r.name)],["Device ID",r=>esc(r.device_uid)],["OS",r=>esc(r.os)],["User",r=>esc(r.user||"-")],["Status",r=>`<span class="dot" style="background:${r.status=="online"?"var(--ok)":"var(--mut)"}"></span>${r.status}`],["Agent",r=>esc(r.agent_status)],["Last seen",r=>esc(r.last_seen)],["Intrusion",r=>r.intrusion_alerts],["App",r=>r.app_alerts]],d)}</div>`}
+ if(page=="intrusions"){const a=await api("/api/alerts");v.innerHTML=`<div class="card"><p class="l">Detections come from the NSL-KDD model on supplied flow records; see docs for scope.</p>${tbl([["Time",r=>esc(r.ts)],["Device",r=>r.device_id],["Result",r=>esc(r.detection_result)],["Category",r=>esc(r.attack_category)],["Severity",r=>sev(r.severity)],["Confidence",r=>r.confidence==null?"n/a":(r.confidence*100).toFixed(0)+"%"],["Model",r=>esc(r.model)],["Seen",r=>r.occurrences+"×"]],a)}</div>`}
+ if(page=="applications"){const [a,e]=await Promise.all([api("/api/applications"),api("/api/application-events")]);
+  v.innerHTML=`<div class="card"><b>Applications</b>${tbl([["Name",r=>esc(r.name)],["Path",r=>esc(r.exe_path)],["Allowlisted",r=>r.allowlisted?"yes":"no"],["Events",r=>r.events]],a)}</div><br><div class="card"><b>Application events</b>${tbl([["Time",r=>esc(r.ts)],["App",r=>esc(r.application)],["Severity",r=>sev(r.severity)],["Description",r=>esc(r.description)]],e)}</div>`}
+ if(page=="logs"){v.innerHTML=`<div class="filters"><input id="q" placeholder="Search text"><select id="sv"><option value="">All severities</option>${["info","low","medium","high","critical"].map(x=>`<option>${x}</option>`).join("")}</select><button id="f">Filter</button></div><div id="lg" class="card"></div>`;
+  const load=async()=>{const p=new URLSearchParams({limit:200});if($("#q").value)p.set("q",$("#q").value);if($("#sv").value)p.set("severity",$("#sv").value);const l=await api("/api/logs?"+p);
+   $("#lg").innerHTML=`<div class="l">${l.total} matching events</div>`+tbl([["ID",r=>r.id],["Time",r=>esc(r.ts)],["Source",r=>esc(r.source)],["Severity",r=>sev(r.severity)],["Device",r=>r.device_id??"-"],["Description",r=>esc(r.description)]],l.items)};
+  $("#f").onclick=load;load()}}
+show();
+</script></body></html>

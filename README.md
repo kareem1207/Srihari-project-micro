@@ -172,3 +172,34 @@ remains **NOT READY**.
 ## Experimental ML scripts
 
 `app/ml/tune_random_forest.py` and `app/ml/evaluate_tuned_rf.py` are offline experiments. Their scope and evaluation limitations are documented in [`docs/ML_EXPERIMENTS.md`](docs/ML_EXPERIMENTS.md). They do not replace `models/securework_ids.joblib` or change the live IDS compatibility gate.
+
+
+---
+
+## Centralized platform (server, agent, PostgreSQL, ELK) — added
+
+A server-side platform now complements the desktop prototype. See [`docs/AUDIT.md`](docs/AUDIT.md), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
+
+**Scope honesty:** the server IDS scores *NSL-KDD-schema flow records* (flow-export / dataset-replay). It is **not** live packet detection; the desktop app's live gate stays disabled. Live connection scans are stored as `unscored`. Application monitoring is alert-only (no blocking). ELK/Docker/PostgreSQL files were not executed in the dev sandbox.
+
+### Quick start (dev, SQLite)
+```bash
+pip install -r requirements-server.txt
+bash scripts/download_nslkdd.sh
+python -m backend.ml.nslkdd                 # trains 5 models, saves best to models/
+export SECUREWORK_JWT_SECRET=$(python -c "import secrets;print(secrets.token_hex(32))")
+python -m backend.cli admin                 # prompts for password
+python -m backend.cli agent1 --role agent
+uvicorn backend.api:app --port 8000         # console at http://127.0.0.1:8000/ , API docs at /docs
+SECUREWORK_AGENT_USER=agent1 SECUREWORK_AGENT_PASSWORD=... python -m agent.agent --once --replay 300
+pytest backend/tests
+```
+Then allowlist your approved applications as admin via `POST /api/applications/allowlist` — until then every running process is reported.
+
+### Production-style stack
+```bash
+cp deploy/.env.example deploy/.env   # set strong secrets
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+python -m backend.ml.nslkdd           # model must exist in ./models before using detection
+```
+PostgreSQL DDL: `db/schema.sql`. Kibana: http://127.0.0.1:5601 → create a data view on `securework-events*`. Config via env: `POSTGRES_*` or `SECUREWORK_DATABASE_URL`, `SECUREWORK_JWT_SECRET`, `SECUREWORK_ES_URL`.

@@ -1,0 +1,46 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Build and test artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local application data
+config/device_policy.json
+logs/*.log
+models/*.pkl
+models/*.joblib
+models/*.json
+models/comparison/
+dataset/*
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE and editor files
+.vscode/
+.idea/
+.vs/
+*.code-workspace
+*.suo
+*.user
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+
+# Operating system files
+.DS_Store
+Thumbs.db

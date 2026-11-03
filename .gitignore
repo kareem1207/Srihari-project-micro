@@ -44,3 +44,7 @@ data/
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Backend runtime data (datasets, DB, event logs); metrics report is committed
+!models/nslkdd_metrics.json
+logs/*.jsonl

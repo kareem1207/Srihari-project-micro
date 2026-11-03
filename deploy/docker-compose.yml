@@ -1,0 +1,51 @@
+# SecureWork AI central stack: PostgreSQL + API + Elasticsearch + Logstash + Kibana.
+# Usage: cp deploy/.env.example deploy/.env  (edit secrets)  &&  docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d
+# NOTE: authored but not executed in the development sandbox (no Docker there); see docs/TEST_REPORT.md.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: securework
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d securework"]
+      interval: 5s
+      retries: 10
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"   # dev only; enable TLS + auth for production
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["127.0.0.1:9200:9200"]
+    volumes: [esdata:/usr/share/elasticsearch/data]
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    depends_on: [elasticsearch]
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ../logs:/var/log/securework:ro
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    depends_on: [elasticsearch]
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports: ["127.0.0.1:5601:5601"]
+  api:
+    build: { context: .., dockerfile: deploy/Dockerfile }
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SECUREWORK_JWT_SECRET: ${SECUREWORK_JWT_SECRET}
+      SECUREWORK_ES_URL: http://elasticsearch:9200
+      SECUREWORK_LOG_FILE: /app/logs/securework_events.jsonl
+    volumes: ["../logs:/app/logs", "../models:/app/models:ro"]
+    ports: ["8000:8000"]
+volumes: { pgdata: {}, esdata: {} }
